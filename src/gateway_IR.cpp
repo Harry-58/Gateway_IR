@@ -166,7 +166,7 @@ void irLoop() {
     Serial << "IR-RECV --- Typ: " << results.decode_type << " = " << irrecv.getProtocolString() << "\t  Bits: " << results.bits << "\t  Code: 0x" << _HEX(results.value) << endl;
     irrecv.resume();  // Receive the next value
 
-    if ((results.decode_type > 0) & (!results.isRepeat)) {  // nur wenn Type bekannt und keine Wiederholung
+    if ((results.decode_type > 0) && (!results.isRepeat)) {  // nur wenn Type bekannt und keine Wiederholung
       if ((results.value != irLastValue) || (millis() > irLastTimer)) {  // nur wenn neuer Code oder Timer schon abgelaufen
         irLastTimer = millis() + atoi(irTimervalue);
         irLastValue = results.value;
@@ -541,7 +541,7 @@ bool connectMqttOptions() {
   if (mqttUserPasswordValue[0] != '\0') {
     result = mqttClient.connect(mqttID.c_str(), mqttUserNameValue, mqttUserPasswordValue, mqttMainTopicValue, 0, true, mqttWillMessage);
   } else {
-    result = mqttClient.connect(mqttID.c_str());
+    result = mqttClient.connect(mqttID.c_str(), mqttMainTopicValue, 0, true, mqttWillMessage);
   }
   return result;
 }
