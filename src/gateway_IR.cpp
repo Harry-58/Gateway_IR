@@ -416,7 +416,7 @@ void loop() {
     if (connectMqtt()) {
       needMqttConnect = false;
     }
-  } else if ((iotWebConf.getState() == IOTWEBCONF_STATE_ONLINE) && (!mqttClient.connected())) {
+  } else if ((iotWebConf.getState() == iotwebconf::OnLine) && (!mqttClient.connected())) {
     // Serial.println("MQTT reconnect");
     connectMqtt();
   }
@@ -427,7 +427,7 @@ void loop() {
     ESP.restart();
   }
 
-  if (!needMqttConnect && (iotWebConf.getState() == IOTWEBCONF_STATE_ONLINE) && (millis() > nextStatus)) {
+  if (!needMqttConnect && (iotWebConf.getState() == iotwebconf::OnLine) && (millis() > nextStatus)) {
     nextStatus = millis() + (1000 * 60 * 10);  // 10min
     mqttClient.publish("IP", WiFi.localIP().toString());
   }
