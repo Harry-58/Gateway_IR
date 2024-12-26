@@ -7,7 +7,7 @@
 #include <myMqtt.h>
 #include <myUtils.h>
 
-#define DEBUG_EIN  //"Schalter" zum aktivieren von DEBUG-Ausgaben
+#define DEBUG__EIN  //"Schalter" zum aktivieren von DEBUG-Ausgaben
 #include <myDebug.h>
 
 
@@ -36,7 +36,7 @@ const char wifiInitialApPassword[] = WLAN_AP_PASS;
 #define NUMBER_LEN 16
 
 // -- Configuration specific key. The value should be modified if config structure was changed.
-#define CONFIG_VERSION "gw4"
+#define CONFIG_VERSION "gw5"
 
 // -- When CONFIG_PIN is pulled to ground on startup, the Thing will use the initial
 //      password to buld an AP. (E.g. in case of lost password)
@@ -53,6 +53,7 @@ IRrecv irrecv(IR_RECV_PIN);
 decode_results results;
 
 #ifdef mitFritzBox
+// wenn Fritzbox in anderem Subnetz dann VPN definieren
 const int FRITZBOX_PORT = 1012;
 
 WiFiClient Fritzbox;
@@ -74,7 +75,7 @@ bool connectMqtt();
 bool connectMqttOptions();
 // -- Callback methods.
 void wifiConnected();
-void configSaved();
+void configSaved(uint16_t mode);
 bool formValidator(iotwebconf::WebRequestWrapper *webRequestWrapper);
 
 DNSServer dnsServer;
@@ -109,15 +110,69 @@ iotwebconf::TextParameter mqttMainTopicParam        = iotwebconf::TextParameter(
 char fritzboxAktivValue[STRING_LEN];
 char fritzboxIpValue[STRING_LEN];
 
-iotwebconf::ParameterGroup fritzboxGroup          = iotwebconf::ParameterGroup("fritzboxConf", "Fritzbox");
+iotwebconf::ParameterGroup fritzboxGroup          = iotwebconf::ParameterGroup("fritzboxConf", "Fritzbox (VPN)");
+iotwebconf::TextParameter fritzboxIPParam         = iotwebconf::TextParameter("IP", "fritzboxIP", fritzboxIpValue, STRING_LEN,"192.168.188.1");
 iotwebconf::CheckboxParameter fritzboxUsedParam   = iotwebconf::CheckboxParameter("Aktiv", "fritzboxAktiv", fritzboxAktivValue, STRING_LEN, false);
-iotwebconf::TextParameter fritzboxIPParam         = iotwebconf::TextParameter("IP", "fritzboxIP", fritzboxIpValue, STRING_LEN,"192.168.178.1");
 #endif
 
 
 char irTimervalue[NUMBER_LEN];
 iotwebconf::ParameterGroup irGroup        = iotwebconf::ParameterGroup("irConf", "Infrarot");
-iotwebconf::NumberParameter irTimerParam  = iotwebconf::NumberParameter("Timer","irTimer",irTimervalue, NUMBER_LEN, "500", "0..2000", "min='0' max='2000' step='100'");
+iotwebconf::NumberParameter irTimerParam  = iotwebconf::NumberParameter("Timer","irTimer",irTimervalue, NUMBER_LEN, "1000", "0..2000", "min='0' max='2000' step='100'");
+
+
+//**************************************************
+// -- Javascript block will be added to the header.
+const char CUSTOMHTML_SCRIPT_INNER[] PROGMEM =
+    "\n\
+document.addEventListener('DOMContentLoaded', function(event) {\n\
+  let elements = document.querySelectorAll('input[type=\"password\"]');\n\
+  for (let p of elements) {\n\
+  	let btn = document.createElement('INPUT'); btn.type = 'button'; btn.value = '🔓'; btn.style.width = '35px'; p.style.width = '90%'; p.parentNode.insertBefore(btn,p.nextSibling);\n\
+    btn.onclick = function() { if (p.type === 'password') { p.type = 'text'; btn.value = '🔐'; } else { p.type = 'password'; btn.value = '🔓'; } }\n\
+  };\n\
+});\n";
+// -- HTML element will be added inside the body element.
+// const char CUSTOMHTML_BODY_INNER[] PROGMEM = "<div><img src='data:image/png;base64,
+// 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'/></div>\n";
+
+const char CUSTOMHTML_STYLE_INNER[] PROGMEM =
+    R"(
+#content {width: 50%;}
+label {display:block; padding-left:5px;}
+#iwcSys {display:grid;grid-template-columns:auto auto auto;}
+.iwcThingName {grid-column:1/span 3;}
+#mqttConf {display:grid;grid-template-columns:auto auto auto;}
+#mqttPass, #iwcApPassword, #iwcWifiPassword {width:70% !important;}
+.mqttTopic {grid-column:1/span 3;}
+input[type="time"], input[type="date"]  {font-size:1.25em;}
+legend {color:white;background-color: grey;}
+#fritzboxConf {display:grid;grid-template-columns:auto auto;}
+#irConf {display:grid;grid-template-columns:auto auto;}
+)";
+
+// .param_time, .giessDauer11, .giessDauer12, .giessDauer13, .giessDauer14{float:left;width: 47%;}";
+
+// -- This is an OOP technique to override behaviour of the existing
+// IotWebConfHtmlFormatProvider. Here two method are overridden from
+// the original class. See IotWebConf.h for all potentially overridable
+// methods of IotWebConfHtmlFormatProvider .
+class CustomHtmlFormatProvider : public iotwebconf::HtmlFormatProvider {
+ protected:
+  String getScriptInner() override { return HtmlFormatProvider::getScriptInner() + String(FPSTR(CUSTOMHTML_SCRIPT_INNER)); }
+  /*   String getBodyInner() override
+    {
+      return
+        String(FPSTR(CUSTOMHTML_BODY_INNER)) +
+        HtmlFormatProvider::getBodyInner();
+    } */
+  String getStyleInner() override { return HtmlFormatProvider::getStyleInner() + "\n" + String(FPSTR(CUSTOMHTML_STYLE_INNER)); }
+};
+
+// -- An instance must be created from the class defined above.
+CustomHtmlFormatProvider customHtmlFormatProvider;
+
+
 
 bool needMqttConnect = false;
 bool needReset       = false;
@@ -184,7 +239,7 @@ String topicFritzBoxState   =  topicFritzBox + "/state";
 
 void connectFB() {
    if (!fritzboxUsedParam.isChecked()){
-      DEBUG_PRINTLN("Fritzbox nicht aktiv");
+      DEBUG__PRINTLN("Fritzbox nicht aktiv");
       return;
    }
   uint16_t reconnectCount = 0;
@@ -213,10 +268,10 @@ void connectFB() {
 }
 
 void checkFB() {
-    if (!fritzboxUsedParam.isChecked()){
-      DEBUG_PRINTLN("Fritzbox nicht aktiv");
-      return;
-   }
+  if (!fritzboxUsedParam.isChecked()) {
+    DEBUG__PRINTLN("Fritzbox nicht aktiv");
+    return;
+  }
   // Check connection (refresh)
   if ((millis() - connectioncheck) > CHECKCONNECTION) {
     connectioncheck = millis();
@@ -333,14 +388,17 @@ void setup() {
   iotWebConf.addParameterGroup(&mqttGroup);
 
 #ifdef mitFritzBox
-  fritzboxGroup.addItem(&fritzboxUsedParam);
   fritzboxGroup.addItem(&fritzboxIPParam);
+  fritzboxGroup.addItem(&fritzboxUsedParam);
 
   iotWebConf.addParameterGroup(&fritzboxGroup);
 #endif
 
   irGroup.addItem(&irTimerParam);
   iotWebConf.addParameterGroup(&irGroup);
+
+    // -- Applying the new HTML format to IotWebConf.
+  iotWebConf.setHtmlFormatProvider(&customHtmlFormatProvider);
 
   iotWebConf.setStatusPin(STATUS_PIN,HIGH);
   iotWebConf.setConfigPin(CONFIG_PIN);
@@ -466,12 +524,12 @@ void doRestart() {
   s += "<body><br><br>Restart in 5 Sekunden";
   s += "</body></html>\n";
   server.send(200, "text/html", s);
-  DEBUG_PRINTLN("Restart in 5 Sekunden");
+  DEBUG__PRINTLN("Restart in 5 Sekunden");
 
   iotWebConf.delay(5000);
   WiFi.disconnect();
   delay(100);
-  DEBUG_PRINTLN("Restart now");
+  DEBUG__PRINTLN("Restart now");
   ESP.restart();
   delay(1000);
 }
@@ -483,10 +541,11 @@ void wifiConnected() {
   Serial.println(WiFi.getHostname());
 }
 
-void configSaved() {
+void configSaved(uint16_t mode) {
   Serial.println("Configuration was updated.");
-  needReset = true;
-
+  if (mode == 1) {  // Restart notwendig?
+    needReset = true;
+  }
 }
 
 bool formValidator(iotwebconf::WebRequestWrapper *webRequestWrapper) {
@@ -554,7 +613,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   Serial.println("Incoming: " + String(topic) + " >" + sPayLoad + "<");
 
   if (strstr(topic, "/IR-Send/Samsung")) {
-    DEBUG_PRINT("Samsung  ");
+    DEBUG__PRINT("Samsung  ");
     if (sPayLoad.length() > 2) {  // nur wenn payload vorhanden
       uint32_t irCode = strtoul(sPayLoad.c_str(), NULL, 16);
       Serial.printf("IR_Send -- Code: 0x%X\n", irCode);
@@ -563,7 +622,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
       irrecv.enableIRIn();
     }
   } else if (strstr(topic, "/IR-Send/NEC")) {
-    DEBUG_PRINT("NEC  ");
+    DEBUG__PRINT("NEC  ");
     if (sPayLoad.length() > 2) {  // nur wenn payload vorhanden
       uint32_t irCode = strtoul(sPayLoad.c_str(), NULL, 16);
       Serial.printf("IR_Send -- Code: 0x%X\n", irCode);
